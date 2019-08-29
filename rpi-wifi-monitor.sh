@@ -1,10 +1,7 @@
 #!/bin/bash
 
-#cd /opt/rpi-wifi-monitor
-cd /home/pi/rpi-wifi-monitor
+cd /opt/rpi-wifi-monitor
 source rpi-wifi-monitor.conf
-
-CHECK_INTERVAL_SEC=1
 
 # check wpa_supplicant.conf 
 # return 0 if wpa_supplicant.conf is not set.
@@ -25,6 +22,7 @@ check_connection() {
 }
 
 off_ap() {
+    echo "off_ap"
     [ $(pgrep hostapd | wc -l) -gt 0 ] && killall hostapd
     systemctl stop dnsmasq
     systemctl stop dhcpcd
@@ -33,6 +31,7 @@ off_ap() {
 
 on_ap() {
     echo "on_ap"
+    # set static address to wlan0
     cat << EOL >> /etc/dhcpcd.conf
     interface wlan0
     static ip_address=172.24.1.1/24
@@ -41,11 +40,18 @@ on_ap() {
     static broadcast 172.24.1.255
 EOL
     ifconfig wlan0 up
-    hostapd /etc/hostapd/hostapd.conf &
+    systemctl daemon-reload
+    systemctl restart dhcpcd
+    # remove static address config for wifi
+    systemctl restart dnsmasq
+    # set ssid name = hostname
+    sed -i -e "s/ssid=\(.*\)/ssid=$(hostname)ap/g" /etc/hostapd/hostapd.conf
+    head -n -5 /etc/dhcpcd.conf | tee /etc/dhcpcd.conf > /dev/null
+    hostapd /etc/hostapd/hostapd.conf
 }
 
 off_wifi() {
-    [ $(pgrep hostapd | wc -l) -gt 0 ] && killall hostapd
+    echo "off_wifi"
     systemctl daemon-reload
     systemctl stop wpa_supplicant
     systemctl stop dhcpcd
@@ -53,32 +59,38 @@ off_wifi() {
 }
 
 on_wifi() {
+    echo "on_wifi"
     systemctl ifconfig wlan0 up
-    systemctl start wpa_supplicant
-    sleep 2
     systemctl daemon-reload
-    systemctl start dhcpcd
-}
-
-to_ap_mode() {
-    echo "AP mode activating..."
-    off_wifi
-    on_ap
+    systemctl restart dhcpcd
+    systemctl restart wpa_supplicant
+    systemctl restart avahi-daemon
 }
 
 interval_connect_check() {
     while true
     do
-        [ $(check_connection) -lt 1 ] && echo "lost connection!" && to_ap_mode
+        [ $(check_connection) -lt 1 ] && echo "lost connection!" && off_wifi && on_ap
         sleep $CHECK_INTERVAL_SEC
     done
 }
 
 # activate wifi
 
-if [ $(check_config_file) -gt 0 ];then
-    echo "wpa_supplicant.conf is set. start to check connection..."
-    interval_connect_check
+if [ "$WIFI_MODE" = "wifi" ];then
+    if [ $(check_config_file) -gt 0 ];then
+        echo "wpa_supplicant.conf is set. wifi mode activating..."
+        off_ap
+        on_wifi
+        echo "starting connection check."
+        interval_connect_check
+    else
+        echo "wpa_supplicant.conf is not set. AP mode activating..."
+        off_wifi
+        on_ap
+    fi
 else
-    echo "wpa_supplicant.conf is not set. AP mode activating..."
+    echo "start ap mode."
+    off_wifi
+    on_ap
 fi

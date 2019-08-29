@@ -1,0 +1,12 @@
+[Unit]
+Description=rpi-wifi-monitor
+Before=wpa_supplicant.service
+
+[Service]
+Type=simple
+PIDFile=/opt/rpi-wifi-monitor/pid
+ExecStart=/opt/rpi-wifi-monitor/rpi-wifi-monitor.sh
+
+[Install]
+WantedBy=multi-user.target
+Alias=dhcpcd5.service
