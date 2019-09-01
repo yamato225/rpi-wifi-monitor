@@ -26,18 +26,20 @@ off_ap() {
     [ $(pgrep hostapd | wc -l) -gt 0 ] && killall hostapd
     systemctl stop dnsmasq
     systemctl stop dhcpcd
-    systemctl ifconfig wlan0 down
+    ifconfig wlan0 down
+    grep -v "AP CONFIG" /etc/dhcpcd.conf > /tmp/dhcpcd.conf.tmp
+    cp /tmp/dhcpcd.conf.tmp /etc/dhcpcd.conf
 }
 
 on_ap() {
     echo "on_ap"
     # set static address to wlan0
-    cat << EOL >> /etc/dhcpcd.conf
-    interface wlan0
-    static ip_address=172.24.1.1/24
-    static routers=172.24.1.1
-    static domain_name_servers=172.24.1.1
-    static broadcast 172.24.1.255
+    cat << EOL | tee -a /etc/dhcpcd.conf
+interface wlan0                        #AP CONFIG
+static ip_address=172.24.1.1/24        #AP CONFIG
+static routers=172.24.1.1              #AP CONFIG
+static domain_name_servers=172.24.1.1  #AP CONFIG
+static broadcast 172.24.1.255          #AP CONFIG
 EOL
     ifconfig wlan0 up
     systemctl daemon-reload
@@ -46,7 +48,6 @@ EOL
     systemctl restart dnsmasq
     # set ssid name = hostname
     sed -i -e "s/ssid=\(.*\)/ssid=$(hostname)ap/g" /etc/hostapd/hostapd.conf
-    head -n -5 /etc/dhcpcd.conf | tee /etc/dhcpcd.conf > /dev/null
     hostapd /etc/hostapd/hostapd.conf
 }
 
@@ -60,7 +61,7 @@ off_wifi() {
 
 on_wifi() {
     echo "on_wifi"
-    systemctl ifconfig wlan0 up
+    ifconfig wlan0 up
     systemctl daemon-reload
     systemctl restart dhcpcd
     systemctl restart wpa_supplicant
