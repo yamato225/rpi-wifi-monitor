@@ -83,7 +83,18 @@ on_wifi() {
 interval_connect_check() {
     while true
     do
-        [ $(check_connection) -lt 1 ] && echo "lost connection!" && off_wifi && on_ap
+        if [ $(check_connection) -lt 1 ];then
+            # try to restart wifi
+            systemct restart wpa_supplicant
+            systemct restart dhcpcd
+            sleep 10
+            if [ $(check_connection) -lt 1 ]; then
+                # to AP mode.
+                echo "lost connection!"
+                off_wifi
+                on_ap
+            fi
+        fi
         sleep $CHECK_INTERVAL_SEC
     done
 }
